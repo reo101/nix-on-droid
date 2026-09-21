@@ -34,6 +34,16 @@ with lib;
         default = [ ];
         description = "Extra options passed to proot, e.g., extra bind mounts.";
       };
+
+      # When sessions do not use proot (e.g. launcher-based replacements),
+      # skipping this keeps evaluation pure: `files.prootStatic` is a
+      # hardcoded store-path string whose `types.package` merge calls
+      # `builtins.storePath`, which pure evaluation (deploy-rs) rejects.
+      linkProotStatic = mkOption {
+        type = types.bool;
+        default = true;
+        description = "Whether the activation package exposes proot-static.";
+      };
     };
 
   };
