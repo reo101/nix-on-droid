@@ -17,6 +17,11 @@ Examples:
 $ nix run .#deploy -- 'https://example.com/bootstrap/source.tar.gz' 'user@host:/path/to/bootstrap'
 $ nix run .#deploy -- 'github:USER/nix-on-droid/BRANCH' 'user@host:/path/to/bootstrap'
 
+Environment:
+  ARCHES="aarch64 x86_64"         the bootstrap zips to build
+  ANDROID_APP_ID=com.termux.nix   the Android app they are for; every path
+                                  in a bootstrap is the app's data dir
+
 EOF
     exit 1
 fi
@@ -24,6 +29,7 @@ fi
 PUBLIC_URL="$1"
 RSYNC_TARGET="$2"
 : ${ARCHES:=aarch64 x86_64}
+: ${ANDROID_APP_ID:=com.termux.nix}
 
 # this allows to run this script from every place in this git repo
 REPO_DIR="$(git rev-parse --show-toplevel)"
@@ -75,7 +81,16 @@ for arch in $ARCHES; do
     fi
 
     log "building $arch bootstrapZip..."
-    BOOTSTRAP_ZIP="$(nix build --no-link --print-out-paths --impure ".#bootstrapZip-${arch}")"
+    if [[ "$ANDROID_APP_ID" == com.termux.nix ]]; then
+        BOOTSTRAP_ZIP="$(nix build --no-link --print-out-paths --impure ".#bootstrapZip-${arch}")"
+    else
+        BOOTSTRAP_ZIP="$(nix build --no-link --print-out-paths --impure --expr "
+            ((builtins.getFlake \"git+file://$REPO_DIR\").lib.bootstrapPackages {
+                system = builtins.currentSystem;
+                arch = \"$arch\";
+                androidAppId = \"$ANDROID_APP_ID\";
+            }).bootstrapZip")"
+    fi
     UPLOADS+=($BOOTSTRAP_ZIP/bootstrap-$arch.zip)
 done
 
