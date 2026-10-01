@@ -193,7 +193,10 @@ ANDROID_APP_ID=org.example.nix nix run ".#deploy" -- <public_url> <rsync_target>
 
 An app's own flake can build it with
 `nix-on-droid.lib.bootstrapPackages { system = …; arch = "aarch64"; androidAppId = "org.example.nix"; }`
-(`--impure`, like the other bootstrap builds).
+(`--impure`, like the other bootstrap builds). Its `initialSettings` (option
+path to value, e.g. `{ "android-integration.am.enable" = true; }`) are what
+the first configuration starts with: the place for the `android-integration`
+tools the app serves, so they work from first boot.
 
 The configuration such a bootstrap's first start creates carries
 `build.androidAppId = "org.example.nix";`, which every path the modules

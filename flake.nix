@@ -137,20 +137,23 @@
       # bootstrap is the app's data dir (`build.androidAppId`). The URLs say
       # where its first boot fetches Nix-on-Droid from, unless
       # NIX_ON_DROID_CHANNEL_URL / NIX_ON_DROID_FLAKE_URL do; that
-      # Nix-on-Droid must have `build.androidAppId`. Building needs --impure,
-      # like the bootstrap packages below.
+      # Nix-on-Droid must have `build.androidAppId`. `initialSettings` are
+      # what the user's first configuration starts with, by option path (say,
+      # the `android-integration` tools the app serves). Building needs
+      # --impure, like the bootstrap packages below.
       lib.bootstrapPackages =
         { system # the build host
         , arch # the device's CPU: "aarch64" or "x86_64"
         , androidAppId
         , nixOnDroidChannelURL ? null
         , nixOnDroidFlakeURL ? null
+        , initialSettings ? { }
         }:
         (import ./pkgs {
           _nativeSystem = system;
           system = "${arch}-linux";
           nixpkgs = nixpkgs-for-bootstrap;
-          inherit androidAppId;
+          inherit androidAppId initialSettings;
           fallbackNixOnDroidChannelURL = nixOnDroidChannelURL;
           fallbackNixOnDroidFlakeURL = nixOnDroidFlakeURL;
         }).customPkgs;
