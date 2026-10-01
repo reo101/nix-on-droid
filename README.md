@@ -40,6 +40,36 @@ launch the app, press OK,
 expect many hundreds megabytes of downloads to happen.
 
 
+### sparkles:terminal (`sparkles-terminal-apk`)
+
+This flake also builds an app to run Nix-on-Droid in (see
+[Running in another app](#running-in-another-app)):
+[sparkles:terminal](https://github.com/PetarKirov/sparkles/blob/main/docs/apps/terminal/android.md),
+a NativeActivity with no Java in it, built entirely by Nix. sparkles builds
+it, with a bootstrap from `lib.bootstrapPackages`; these outputs re-export it:
+
+```console
+$ nix build .#sparkles-terminal-apk                    # downloads the bootstrap on first start
+$ nix build --impure .#sparkles-terminal-apk-offline   # carries the aarch64 and x86_64 bootstraps
+$ adb install result/*.apk
+```
+
+`sparkles-terminal-apk-unsigned` is the release build, for signing outside
+Nix. The APKs build on x86_64 Linux and Apple Silicon macOS, the hosts the
+Android NDK ships for; only these outputs read the `sparkles` input, so
+nothing else fetches it. Its package id is
+`dev.petar_kirov.sparkles.terminal.nix`, so it does not replace an installed
+Termux-based app; a bootstrap for it is
+`ANDROID_APP_ID=dev.petar_kirov.sparkles.terminal.nix nix run .#deploy -- …`.
+The `android-integration` tools work through the app's built-in `am` server,
+except `termux-open` on a local file, and there is no notification: the app
+has no foreground service.
+
+The shared emulator scenarios select this app with `NOD_APP=sparkles-terminal`;
+pass the debug APK as `NOD_APK=/absolute/path/to/sparkles-terminal-nix.apk`.
+Its driver reads opt-in screen dumps because the GL terminal has no accessibility
+text. CI tests both this app and the default Termux-based app.
+
 ## Nix-on-Droid and the module system
 
 ### Config file

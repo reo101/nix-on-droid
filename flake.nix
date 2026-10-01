@@ -26,11 +26,32 @@
       url = "sourcehut:~rycee/nmd";
       inputs.nixpkgs.follows = "nixpkgs-docs";
     };
+
+    # sparkles:terminal, an app Nix-on-Droid runs in (`sparkles-terminal-apk`).
+    # Only those outputs read it, so evaluating anything else never fetches
+    # it. It takes this flake as an input for `lib.bootstrapPackages`;
+    # `follows = ""` makes its copy this one.
+    sparkles = {
+      url = "github:PetarKirov/sparkles/feat/nix-on-droid";
+      inputs.nix-on-droid.follows = "";
+    };
   };
 
-  outputs = { self, nixpkgs, nixpkgs-for-bootstrap, home-manager, nix-formatter-pack, nmd, nixpkgs-docs }:
+  outputs = { self, nixpkgs, nixpkgs-for-bootstrap, home-manager, nix-formatter-pack, nmd, nixpkgs-docs, sparkles }:
     let
       forEachSystem = nixpkgs.lib.genAttrs [ "aarch64-linux" "x86_64-linux" ];
+
+      # sparkles:terminal's Nix flavour, built by sparkles (its
+      # `terminal-nix-*`), on the hosts it builds APKs on. The names and
+      # systems are listed, not read from sparkles, so that no evaluation of
+      # `packages` fetches it.
+      sparklesTerminalPackages = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-darwin" ] (system:
+        let terminal = sparkles.legacyPackages.${system};
+        in {
+          sparkles-terminal-apk = terminal.terminal-nix-apk;
+          sparkles-terminal-apk-offline = terminal.terminal-nix-apk-offline;
+          sparkles-terminal-apk-unsigned = terminal.terminal-nix-apk-unsigned;
+        });
 
       overlay = nixpkgs.lib.composeManyExtensions (import ./overlays);
 
@@ -160,7 +181,7 @@
 
       overlays.default = overlay;
 
-      packages = forEachSystem (system:
+      packages = nixpkgs.lib.recursiveUpdate sparklesTerminalPackages (forEachSystem (system:
         let
           flattenArch = arch: derivationAttrset:
             nixpkgs.lib.attrsets.mapAttrs'
@@ -187,7 +208,7 @@
         // (perArchCustomPkgs "aarch64")
         // (perArchCustomPkgs "x86_64")
         // docs
-      );
+      ));
 
       templates = {
         default = self.templates.minimal;
