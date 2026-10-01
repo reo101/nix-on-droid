@@ -175,6 +175,35 @@ In case you only care about updates through wiping the data,
 or are forking to submit a one-off pull request,
 you shouldn't need a binary cache for that.
 
+### Running in another app
+
+Nix-on-Droid can also run in an Android app other than the Termux-based one.
+Such an app does the Termux fork's job: it unpacks the bootstrap zip into its
+data dir, runs `usr/bin/login` in a terminal, and exports
+`TERMUX_APP__PACKAGE_NAME` (its package id) into the session. For the
+`android-integration` tools it also serves Termux's `am` socket, under
+`files/apps/<package id>`.
+
+Every path in a bootstrap is the app's data dir, so the bootstrap has to be
+built for the app's package id:
+
+```sh
+ANDROID_APP_ID=org.example.nix nix run ".#deploy" -- <public_url> <rsync_target>
+```
+
+An app's own flake can build it with
+`nix-on-droid.lib.bootstrapPackages { system = …; arch = "aarch64"; androidAppId = "org.example.nix"; }`
+(`--impure`, like the other bootstrap builds).
+
+The configuration such a bootstrap's first start creates carries
+`build.androidAppId = "org.example.nix";`, which every path the modules
+generate derives from. A channel-based configuration without it picks the
+app up from the session; a flake has to say it. First boot builds that
+configuration against the Nix-on-Droid the bootstrap names: until a release
+branch has `build.androidAppId`, point it at one that does
+(`NIX_ON_DROID_CHANNEL_URL` / `NIX_ON_DROID_FLAKE_URL`, or the URLs
+`lib.bootstrapPackages` takes).
+
 ## Nix flakes
 
 **Note:** Nix flake support is still experimental at the moment and subject to change.
