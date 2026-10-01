@@ -1,5 +1,26 @@
 # Nix-on-Droid
 
+> [!NOTE]
+> **This is a fork** of
+> [nix-community/nix-on-droid](https://github.com/nix-community/nix-on-droid),
+> to run Nix-on-Droid in a second Android app:
+> [sparkles:terminal](https://github.com/PetarKirov/sparkles/blob/main/docs/apps/terminal/android.md),
+> a terminal with no Java in it, built entirely by Nix, in place of the
+> Termux fork. It has two branches:
+>
+> - [`feat/android-app-id`](https://github.com/PetarKirov/nix-on-droid/tree/feat/android-app-id),
+>   the proposal for upstream, which names no particular app:
+>   `build.androidAppId` (the app Nix-on-Droid runs in, from which every
+>   path the modules and the Android integration tools generate derives; the
+>   default stays `com.termux.nix`), bootstraps built for another app
+>   (`lib.bootstrapPackages`, the deploy script's `ANDROID_APP_ID`), a check,
+>   and [docs](#running-in-another-app).
+> - `feat/sparkles-terminal`, that plus sparkles:terminal as the app
+>   ([`sparkles-terminal-apk`](#sparklesterminal-sparkles-terminal-apk)),
+>   the emulator tests driving it, and this note.
+>
+> Everything else here is upstream's, unchanged.
+
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
     alt="Get it on F-Droid"
     height="80">](https://f-droid.org/packages/com.termux.nix)
