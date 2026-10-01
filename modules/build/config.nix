@@ -22,6 +22,32 @@ with lib;
         '';
       };
 
+      androidAppId = mkOption {
+        type = types.str;
+        # The app says which it is: Termux-based apps export
+        # TERMUX_APP__PACKAGE_NAME into their sessions, and an alternative
+        # app should too. Only an impure evaluation (channels) can read it; a
+        # flake's configuration names the app itself (its first start writes
+        # the option into the template).
+        default =
+          let fromApp = builtins.getEnv "TERMUX_APP__PACKAGE_NAME";
+          in if fromApp != "" then fromApp else "com.termux.nix";
+        defaultText = literalMD
+          "the app's `TERMUX_APP__PACKAGE_NAME`, when the evaluation can see it (channels); else `\"com.termux.nix\"`";
+        example = "org.example.nix";
+        description = ''
+          Package id of the Android app that runs this Nix-on-Droid
+          installation. The app's data directory, and therefore
+          <option>build.installationDir</option>, <option>user.home</option>
+          and the paths of the Android integration tools, derive from it.
+          The default is the app running the evaluation, where it can be
+          seen, else the Termux-based Nix-on-Droid app. An alternative app
+          needs a bootstrap built for its id
+          (<literal>lib.bootstrapPackages</literal>). Changing it on an existing installation does not move the
+          installation: it must match the app that is actually installed.
+        '';
+      };
+
       installationDir = mkOption {
         type = types.path;
         internal = true;
@@ -53,7 +79,7 @@ with lib;
 
   config = {
 
-    build.installationDir = "/data/data/com.termux.nix/files/usr";
+    build.installationDir = "/data/data/${config.build.androidAppId}/files/usr";
 
   };
 
