@@ -65,6 +65,32 @@
 
       checks = forEachSystem (system: {
         nix-formatter-pack-check = nix-formatter-pack.lib.mkCheck formatterPackArgsFor.${system};
+
+        # `build.androidAppId` moves every path that names the app's data dir,
+        # and its default keeps the Termux-based app's. Evaluation only.
+        android-app-id =
+          let
+            pathsFor = modules:
+              let
+                inherit (self.lib.nixOnDroidConfiguration {
+                  pkgs = import nixpkgs { system = "aarch64-linux"; };
+                  modules = [{ system.stateVersion = "24.05"; }] ++ modules;
+                }) config;
+              in
+              { inherit (config.build) installationDir; inherit (config.user) home; };
+            expectFor = appId: {
+              installationDir = "/data/data/${appId}/files/usr";
+              home = "/data/data/${appId}/files/home";
+            };
+            check = name: actual: expected:
+              nixpkgs.lib.throwIf (actual != expected)
+                "android-app-id: ${name}: got ${builtins.toJSON actual}, expected ${builtins.toJSON expected}";
+          in
+          check "default" (pathsFor [ ]) (expectFor "com.termux.nix")
+            (check "org.example.nix"
+              (pathsFor [{ build.androidAppId = "org.example.nix"; }])
+              (expectFor "org.example.nix")
+              (nixpkgs.legacyPackages.${system}.runCommand "android-app-id" { } "touch $out"));
       });
 
       formatter = forEachSystem (system: nix-formatter-pack.lib.mkFormatter formatterPackArgsFor.${system});
