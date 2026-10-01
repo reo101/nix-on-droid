@@ -274,6 +274,10 @@ They share scenarios while delegating app-specific installation, terminal input,
 screen inspection, and Android UI interactions to a driver in
 [`tests/emulator/apps`](./tests/emulator/apps).
 
+CI cold-boots a fresh AVD for each scenario rather than restoring emulator
+snapshots: a restored snapshot can report boot completion while Android's
+input and settings services are unavailable.
+
 `NOD_APP` selects a driver module, defaulting to `termux`. Hyphens in the selector
 become underscores in the module name. `NOD_APK` overrides the selected driver's
 APK path or URL. For example, the default app's metadata can be queried without
