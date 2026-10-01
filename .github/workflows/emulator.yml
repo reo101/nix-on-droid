@@ -99,51 +99,11 @@ jobs:
           retention-days: 2
 
 
-  prepare-avd:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    strategy:
-      fail-fast: false
-      matrix:
-        api-level: [29]  # keep in sync
-    steps:
-      - name: Configure AVD cache
-        id: avd-cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-${{ matrix.api-level }}
-
-      - name: Enable KVM
-        if: matrix.api-level == 29 && steps.avd-cache.outputs.cache-hit != 'true'
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Create AVD and generate snapshot for caching
-        if: matrix.api-level == 29 && steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          # ! Keep in sync with the other one,
-          # ! but w/o -no-snapshot-save and with disable-animations: false
-          target: default
-          arch: x86_64
-          api-level: ${{ matrix.api-level }}
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
-          script: echo "Generated AVD snapshot for caching."
-
-
   emulate:
     needs:
       - prepare-droidctl
       - prepare-n-o-d
       - prepare-apk
-      - prepare-avd
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -153,7 +113,7 @@ jobs:
       fail-fast: false
       matrix:
         app: [termux, sparkles-terminal]  # keep in sync with prepare-n-o-d
-        api-level: [29]  # keep in sync
+        api-level: [29]
         # below 28: bootstrap didn't start, IDK why
         # 34: sometimes work, but doesn't seem stable, even w/o caching images
         script:
@@ -186,7 +146,7 @@ jobs:
         if: matrix.app == 'sparkles-terminal'
         run: echo "NOD_APK=$PWD/nix-on-droid.apk" >> "$GITHUB_ENV"
 
-      - name: Install Nix / enable KVM
+      - name: Install Nix
         uses: nixbuild/nix-quick-install-action@master
       - name: Configure Nix cache
         uses: nix-community/cache-nix-action@main
@@ -205,15 +165,11 @@ jobs:
         if: always() && (steps.droidctl-fetch.outcome == 'failure')
         run: nix build 'github:t184256/droidctl' --out-link /tmp/droidctl
 
-      - name: Restore AVD cache
-        id: avd-cache
-        if: matrix.api-level == 29  # tested, robust with kill workaround
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-${{ matrix.api-level }}
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
       - name: Test app=${{ matrix.app }} script=${{ matrix.script }} api-level=${{ matrix.api-level }}
         uses: reactivecircus/android-emulator-runner@v2
@@ -221,8 +177,9 @@ jobs:
           target: default
           arch: x86_64
           api-level: ${{ matrix.api-level }}
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # Restored snapshots can report boot complete without Android services.
+          force-avd-creation: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           # https://github.com/ReactiveCircus/android-emulator-runner/issues/385
           script: >
