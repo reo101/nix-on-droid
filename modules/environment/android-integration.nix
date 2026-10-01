@@ -5,11 +5,15 @@
 let
   cfg = config.android-integration;
 
+  appId = config.build.androidAppId;
+
   termux-am =
-    pkgs.callPackage (import ../../pkgs/android-integration/termux-am.nix) { };
+    pkgs.callPackage (import ../../pkgs/android-integration/termux-am.nix) {
+      inherit appId;
+    };
   termux-tools =
     pkgs.callPackage (import ../../pkgs/android-integration/termux-tools.nix) {
-      inherit termux-am;
+      inherit termux-am appId;
     };
 in
 {

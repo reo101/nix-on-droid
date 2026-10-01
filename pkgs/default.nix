@@ -6,6 +6,15 @@
 , nixOnDroidChannelURL ? null
 , nixpkgsChannelURL ? null
 , nixOnDroidFlakeURL ? null
+  # The Android app the bootstrap is for (`build.androidAppId`); null keeps the
+  # module default, the Termux-based app.
+, androidAppId ? null
+  # Where first boot fetches Nix-on-Droid from when neither the argument above
+  # nor its environment variable names a source. A non-default app needs a
+  # Nix-on-Droid that has `build.androidAppId`, which the module defaults
+  # (this release's branch upstream) may not.
+, fallbackNixOnDroidChannelURL ? null
+, fallbackNixOnDroidFlakeURL ? null
 }:
 
 let
@@ -15,13 +24,15 @@ let
 
   pkgs = import nixpkgs { system = nativeSystem; };
 
-  urlOptionValue = url: envVar:
+  urlOptionValue = url: envVar: fallback:
     let
       envValue = builtins.getEnv envVar;
+      value =
+        if url != null then url
+        else if envValue != "" then envValue
+        else fallback;
     in
-    pkgs.lib.mkIf
-      (envValue != "" || url != null)
-      (if url == null then envValue else url);
+    pkgs.lib.mkIf (value != null) value;
 
   modules = import ../modules {
     inherit pkgs;
@@ -44,11 +55,15 @@ let
 
       build = {
         channel = {
-          nixpkgs = urlOptionValue nixpkgsChannelURL "NIXPKGS_CHANNEL_URL";
-          nix-on-droid = urlOptionValue nixOnDroidChannelURL "NIX_ON_DROID_CHANNEL_URL";
+          nixpkgs = urlOptionValue nixpkgsChannelURL "NIXPKGS_CHANNEL_URL" null;
+          nix-on-droid = urlOptionValue nixOnDroidChannelURL "NIX_ON_DROID_CHANNEL_URL"
+            fallbackNixOnDroidChannelURL;
         };
 
-        flake.nix-on-droid = urlOptionValue nixOnDroidFlakeURL "NIX_ON_DROID_FLAKE_URL";
+        flake.nix-on-droid = urlOptionValue nixOnDroidFlakeURL "NIX_ON_DROID_FLAKE_URL"
+          fallbackNixOnDroidFlakeURL;
+      } // pkgs.lib.optionalAttrs (androidAppId != null) {
+        inherit androidAppId;
       };
     };
   };

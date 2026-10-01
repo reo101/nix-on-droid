@@ -1,9 +1,11 @@
 # Copyright (c) 2019-2024, see AUTHORS. Licensed under MIT License, see LICENSE.
 
-{ stdenv, fetchFromGitHub, cmake }:
+{ stdenv, fetchFromGitHub, cmake, appId ? "com.termux.nix" }:
 
 let
-  appPath = "/data/data/com.termux.nix/files/apps/com.termux.nix";
+  # The socket the app's in-process `am` server listens on; the path is
+  # derived from the app's package id (`build.androidAppId`).
+  appPath = "/data/data/${appId}/files/apps/${appId}";
   socketPath = "${appPath}/termux-am/am.sock";
 in
 stdenv.mkDerivation rec {

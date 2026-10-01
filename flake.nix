@@ -65,6 +65,32 @@
 
       checks = forEachSystem (system: {
         nix-formatter-pack-check = nix-formatter-pack.lib.mkCheck formatterPackArgsFor.${system};
+
+        # `build.androidAppId` moves every path that names the app's data dir,
+        # and its default keeps the Termux-based app's. Evaluation only.
+        android-app-id =
+          let
+            pathsFor = modules:
+              let
+                inherit (self.lib.nixOnDroidConfiguration {
+                  pkgs = import nixpkgs { system = "aarch64-linux"; };
+                  modules = [{ system.stateVersion = "24.05"; }] ++ modules;
+                }) config;
+              in
+              { inherit (config.build) installationDir; inherit (config.user) home; };
+            expectFor = appId: {
+              installationDir = "/data/data/${appId}/files/usr";
+              home = "/data/data/${appId}/files/home";
+            };
+            check = name: actual: expected:
+              nixpkgs.lib.throwIf (actual != expected)
+                "android-app-id: ${name}: got ${builtins.toJSON actual}, expected ${builtins.toJSON expected}";
+          in
+          check "default" (pathsFor [ ]) (expectFor "com.termux.nix")
+            (check "org.example.nix"
+              (pathsFor [{ build.androidAppId = "org.example.nix"; }])
+              (expectFor "org.example.nix")
+              (nixpkgs.legacyPackages.${system}.runCommand "android-app-id" { } "touch $out"));
       });
 
       formatter = forEachSystem (system: nix-formatter-pack.lib.mkFormatter formatterPackArgsFor.${system});
@@ -105,6 +131,29 @@
               config.imports = modules;
               isFlake = true;
             });
+
+      # The bootstrap packages (`bootstrapZip`, `bootstrap`, `prootTermux`, …)
+      # for an Android app other than the Termux-based one: every path in a
+      # bootstrap is the app's data dir (`build.androidAppId`). The URLs say
+      # where its first boot fetches Nix-on-Droid from, unless
+      # NIX_ON_DROID_CHANNEL_URL / NIX_ON_DROID_FLAKE_URL do; that
+      # Nix-on-Droid must have `build.androidAppId`. Building needs --impure,
+      # like the bootstrap packages below.
+      lib.bootstrapPackages =
+        { system # the build host
+        , arch # the device's CPU: "aarch64" or "x86_64"
+        , androidAppId
+        , nixOnDroidChannelURL ? null
+        , nixOnDroidFlakeURL ? null
+        }:
+        (import ./pkgs {
+          _nativeSystem = system;
+          system = "${arch}-linux";
+          nixpkgs = nixpkgs-for-bootstrap;
+          inherit androidAppId;
+          fallbackNixOnDroidChannelURL = nixOnDroidChannelURL;
+          fallbackNixOnDroidFlakeURL = nixOnDroidFlakeURL;
+        }).customPkgs;
 
       overlays.default = overlay;
 

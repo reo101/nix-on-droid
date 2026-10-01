@@ -6,6 +6,26 @@ let
   inherit (initialPackageInfo) cacert nix;
 
   nixCmd = "${nix}/bin/nix --extra-experimental-features 'flakes nix-command'";
+
+  # The app id is part of every generated path, so a bootstrap built for a
+  # non-default app must carry it into the user's first configuration —
+  # BEFORE the first switch, or that generation is built for the wrong app.
+  # Before that switch there is no coreutils: only nix, bash and cacert.
+  # `system.stateVersion` is in every template and in the channel default.
+  appIdOption = lib.options.showOption [ "build" "androidAppId" ];
+  # Plain bash, like the flake rewrite below: the bootstrap's store holds
+  # only the initial packages, so no sed.
+  pinAppId = file: lib.optionalString (config.build.androidAppId != "com.termux.nix") ''
+    echo "Setting ${appIdOption} = \"${config.build.androidAppId}\"..."
+    stateVersionLine='^  system\.stateVersion = '
+    while IFS="" read -r p || [[ -n "$p" ]]
+    do
+      if [[ $p =~ $stateVersionLine ]]; then
+        printf '  %s = "%s";\n\n' "${appIdOption}" "${config.build.androidAppId}"
+      fi
+      printf '%s\n' "$p"
+    done <<<$(< "${file}") > "${file}"
+  '';
   userShell =
     if config.user.shell.type or "not-found" == "derivation" then
       if config.user.shell ? passthru.shellPath then
@@ -66,17 +86,27 @@ writeText "login-inner" ''
         ${nix}/bin/nix-channel --update nix-on-droid
 
         DEFAULT_CONFIG=$(${nix}/bin/nix-instantiate --eval --expr "<nix-on-droid/modules/environment/login/nix-on-droid.nix.default>")
+        FIRST_CONFIG=$DEFAULT_CONFIG
+        ${lib.optionalString (config.build.androidAppId != "com.termux.nix") ''
+          # The first generation must be built for this app, so it is built
+          # from a copy that names it. Written with bash alone: coreutils
+          # arrive with that generation.
+          FIRST_CONFIG="$HOME/.nix-on-droid-first-config.nix"
+          printf '%s\n' "$(< "$DEFAULT_CONFIG")" > "$FIRST_CONFIG"
+          ${pinAppId "$FIRST_CONFIG"}
+        ''}
 
         echo "Installing first Nix-on-Droid generation..."
         ${nixCmd} build --no-link --file "<nix-on-droid>" nix-on-droid
-        $(${nixCmd} path-info --file "<nix-on-droid>" nix-on-droid)/bin/nix-on-droid switch --file $DEFAULT_CONFIG
+        $(${nixCmd} path-info --file "<nix-on-droid>" nix-on-droid)/bin/nix-on-droid switch --file $FIRST_CONFIG
 
         . "${config.user.home}/.nix-profile/etc/profile.d/nix-on-droid-session-init.sh"
 
         echo "Copying default Nix-on-Droid config..."
         mkdir --parents $HOME/.config/nixpkgs
-        cp $DEFAULT_CONFIG $HOME/.config/nixpkgs/nix-on-droid.nix
+        cp $FIRST_CONFIG $HOME/.config/nixpkgs/nix-on-droid.nix
         chmod u+w $HOME/.config/nixpkgs/nix-on-droid.nix
+        [ "$FIRST_CONFIG" = "$DEFAULT_CONFIG" ] || rm "$FIRST_CONFIG"
 
       else
 
@@ -110,6 +140,8 @@ writeText "login-inner" ''
           fi
         done <<<$(< "${config.user.home}/.config/nix-on-droid/flake.nix") \
                   > "${config.user.home}/.config/nix-on-droid/flake.nix"
+
+        ${pinAppId "${config.user.home}/.config/nix-on-droid/nix-on-droid.nix"}
 
         echo "Installing first Nix-on-Droid generation..."
         ${nixCmd} run ${config.build.flake.nix-on-droid} -- switch --flake ${config.user.home}/.config/nix-on-droid

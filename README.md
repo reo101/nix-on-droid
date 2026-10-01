@@ -175,6 +175,35 @@ In case you only care about updates through wiping the data,
 or are forking to submit a one-off pull request,
 you shouldn't need a binary cache for that.
 
+### Running in another app
+
+Nix-on-Droid can also run in an Android app other than the Termux-based one.
+Such an app does the Termux fork's job: it unpacks the bootstrap zip into its
+data dir, runs `usr/bin/login` in a terminal, and exports
+`TERMUX_APP__PACKAGE_NAME` (its package id) into the session. For the
+`android-integration` tools it also serves Termux's `am` socket, under
+`files/apps/<package id>`.
+
+Every path in a bootstrap is the app's data dir, so the bootstrap has to be
+built for the app's package id:
+
+```sh
+ANDROID_APP_ID=org.example.nix nix run ".#deploy" -- <public_url> <rsync_target>
+```
+
+An app's own flake can build it with
+`nix-on-droid.lib.bootstrapPackages { system = …; arch = "aarch64"; androidAppId = "org.example.nix"; }`
+(`--impure`, like the other bootstrap builds).
+
+The configuration such a bootstrap's first start creates carries
+`build.androidAppId = "org.example.nix";`, which every path the modules
+generate derives from. A channel-based configuration without it picks the
+app up from the session; a flake has to say it. First boot builds that
+configuration against the Nix-on-Droid the bootstrap names: until a release
+branch has `build.androidAppId`, point it at one that does
+(`NIX_ON_DROID_CHANNEL_URL` / `NIX_ON_DROID_FLAKE_URL`, or the URLs
+`lib.bootstrapPackages` takes).
+
 ## Nix flakes
 
 **Note:** Nix flake support is still experimental at the moment and subject to change.
@@ -237,6 +266,74 @@ nix-on-droid on-device-test
 
 **Note:** This currently requires a channel setup and should only be executed on
 clean, disposable installations.
+
+### Emulator app drivers
+
+The scripts in [`tests/emulator`](./tests/emulator) are loaded by `droidctl`.
+They share scenarios while delegating app-specific installation, terminal input,
+screen inspection, and Android UI interactions to a driver in
+[`tests/emulator/apps`](./tests/emulator/apps).
+
+CI cold-boots a fresh AVD for each scenario rather than restoring emulator
+snapshots: a restored snapshot can report boot completion while Android's
+input and settings services are unavailable.
+
+`NOD_APP` selects a driver module, defaulting to `termux`. Hyphens in the selector
+become underscores in the module name. `NOD_APK` overrides the selected driver's
+APK path or URL. For example, the default app's metadata can be queried without
+a device, `droidctl`, or build dependencies:
+
+```sh
+PYTHONPATH=tests/emulator python -m apps
+```
+
+To add an app, add one `apps/<name>.py` module defining `Driver`, derived from
+`apps.base.AppDriver`. Importing and constructing the driver must not contact a
+device or import optional app/build dependencies: the metadata command imports
+only the selected module and prints its `app_id`.
+
+The driver interface is:
+
+* `app_id` and `apk`: Android package ID and default APK path or URL.
+  `files_dir` defaults to `/data/data/<app_id>/files`.
+* `capabilities = Capabilities(notifications=..., overlay_permission=...,
+  restricted_am=..., initial_storage_prompt=...)`: explicitly select notification
+  wake-lock interactions, the overlay-permission flow, restricted `am` behavior,
+  and the first storage-permission prompt.
+* `install(d)` returns the installed `droidctl` app handle; `launch(d, nod=None)`
+  launches it, accepting that handle to avoid another lookup. The common
+  bootstrap helper preserves the post-launch delay.
+* `type_line(d, text, enter=True)` types shell input and normally presses Enter.
+  Empty text presses only Enter; `enter=False` allows a screenshot before Enter.
+* `answer_bootstrap_prompt(d, url)` handles the app's initial bootstrap URL UI,
+  including its screenshots and delays.
+* `wait_for_text(d, text, timeout=90, critical=True)` waits for visible,
+  **unescaped** text, capturing an error screenshot and exiting on a critical
+  timeout. Usually override `contains_text(d, text)` instead to reuse the polling
+  behavior. The default reads XML-escaped text from the accessibility hierarchy.
+  A terminal oracle must only count terminal text while its app is foreground;
+  system dialogs and external apps still need accessibility-tree inspection.
+* `extra_keys(d)` returns extra-key labels; `wake_lock_held(d)` reports the lock
+  state. `check_wake_lock(d, held, initial=False)` normally asserts that state;
+  notification-based drivers override it to inspect their notification UI.
+* `screenshot_artifacts(d)` returns additional textual artifacts as
+  `{extension: contents}`. The shared screenshot helper always writes PNG and XML
+  and saves these extra artifacts beside them, with the same timestamp and suffix.
+
+Capability-specific hooks keep app UI details out of scenarios:
+`wait_for_overlay_permission(d)` checks the overlay prompt and dismisses any
+app-specific error notification; the scenario then grants the permission.
+Restricted `am` drivers supply `restricted_am_message`.
+`answer_storage_prompt(d)` handles the initial storage prompt, and
+`allow_permission(d)` accepts Android's Allow/ALLOW dialog. Override them when
+the app uses a different prompt. Notification drivers also implement
+`acquire_wake_lock_for_tests(d)` for the on-device test runner.
+
+The Termux driver retains its dialog, notification, and widget interactions.
+Other drivers can use a terminal screen oracle or a system wake-lock query
+without changing the scenarios. When `app_id` differs from the default
+`com.termux.nix`, both bootstrap scenarios also wait for the first-boot
+`Setting build.androidAppId = "<app_id>"...` message.
 
 ## Tips
 
