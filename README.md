@@ -267,6 +267,70 @@ nix-on-droid on-device-test
 **Note:** This currently requires a channel setup and should only be executed on
 clean, disposable installations.
 
+### Emulator app drivers
+
+The scripts in [`tests/emulator`](./tests/emulator) are loaded by `droidctl`.
+They share scenarios while delegating app-specific installation, terminal input,
+screen inspection, and Android UI interactions to a driver in
+[`tests/emulator/apps`](./tests/emulator/apps).
+
+`NOD_APP` selects a driver module, defaulting to `termux`. Hyphens in the selector
+become underscores in the module name. `NOD_APK` overrides the selected driver's
+APK path or URL. For example, the default app's metadata can be queried without
+a device, `droidctl`, or build dependencies:
+
+```sh
+PYTHONPATH=tests/emulator python -m apps
+```
+
+To add an app, add one `apps/<name>.py` module defining `Driver`, derived from
+`apps.base.AppDriver`. Importing and constructing the driver must not contact a
+device or import optional app/build dependencies: the metadata command imports
+only the selected module and prints its `app_id`.
+
+The driver interface is:
+
+* `app_id` and `apk`: Android package ID and default APK path or URL.
+  `files_dir` defaults to `/data/data/<app_id>/files`.
+* `capabilities = Capabilities(notifications=..., overlay_permission=...,
+  restricted_am=..., initial_storage_prompt=...)`: explicitly select notification
+  wake-lock interactions, the overlay-permission flow, restricted `am` behavior,
+  and the first storage-permission prompt.
+* `install(d)` returns the installed `droidctl` app handle; `launch(d, nod=None)`
+  launches it, accepting that handle to avoid another lookup. The common
+  bootstrap helper preserves the post-launch delay.
+* `type_line(d, text, enter=True)` types shell input and normally presses Enter.
+  Empty text presses only Enter; `enter=False` allows a screenshot before Enter.
+* `answer_bootstrap_prompt(d, url)` handles the app's initial bootstrap URL UI,
+  including its screenshots and delays.
+* `wait_for_text(d, text, timeout=90, critical=True)` waits for visible,
+  **unescaped** text, capturing an error screenshot and exiting on a critical
+  timeout. Usually override `contains_text(d, text)` instead to reuse the polling
+  behavior. The default reads XML-escaped text from the accessibility hierarchy.
+  A terminal oracle must only count terminal text while its app is foreground;
+  system dialogs and external apps still need accessibility-tree inspection.
+* `extra_keys(d)` returns extra-key labels; `wake_lock_held(d)` reports the lock
+  state. `check_wake_lock(d, held, initial=False)` normally asserts that state;
+  notification-based drivers override it to inspect their notification UI.
+* `screenshot_artifacts(d)` returns additional textual artifacts as
+  `{extension: contents}`. The shared screenshot helper always writes PNG and XML
+  and saves these extra artifacts beside them, with the same timestamp and suffix.
+
+Capability-specific hooks keep app UI details out of scenarios:
+`wait_for_overlay_permission(d)` checks the overlay prompt and dismisses any
+app-specific error notification; the scenario then grants the permission.
+Restricted `am` drivers supply `restricted_am_message`.
+`answer_storage_prompt(d)` handles the initial storage prompt, and
+`allow_permission(d)` accepts Android's Allow/ALLOW dialog. Override them when
+the app uses a different prompt. Notification drivers also implement
+`acquire_wake_lock_for_tests(d)` for the on-device test runner.
+
+The Termux driver retains its dialog, notification, and widget interactions.
+Other drivers can use a terminal screen oracle or a system wake-lock query
+without changing the scenarios. When `app_id` differs from the default
+`com.termux.nix`, both bootstrap scenarios also wait for the first-boot
+`Setting build.androidAppId = "<app_id>"...` message.
+
 ## Tips
 
 * To grant the app access to the storage, use the toggle in the app settings
