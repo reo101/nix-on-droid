@@ -10,6 +10,7 @@ let
   termux-am =
     pkgs.callPackage (import ../../pkgs/android-integration/termux-am.nix) {
       inherit appId;
+      inherit (cfg.am) socketPath;
     };
   termux-tools =
     pkgs.callPackage (import ../../pkgs/android-integration/termux-tools.nix) {
@@ -30,6 +31,27 @@ in
         Provide an `am` (activity manager) command.
         Is not guaranteed to be a real deal, could be of limited compatibility
         with real `am` (like `termux-am`).
+      '';
+    };
+
+    am.socketPath = lib.mkOption {
+      type = lib.types.str;
+      # The app says where it listens, like it says which it is
+      # (`build.androidAppId`): NIX_ON_DROID_AM_SOCKET in its sessions, which
+      # only an impure evaluation (channels) can read; a flake names it.
+      default =
+        let fromApp = builtins.getEnv "NIX_ON_DROID_AM_SOCKET";
+        in if fromApp != "" then fromApp
+        else "/data/data/${appId}/files/apps/${appId}/termux-am/am.sock";
+      defaultText = lib.literalMD
+        "the app's `NIX_ON_DROID_AM_SOCKET`, when the evaluation can see it (channels); else Termux's layout, `/data/data/<id>/files/apps/<id>/termux-am/am.sock`";
+      example = "/data/data/org.example.nix/files/apps/termux-am/am.sock";
+      description = lib.mdDoc ''
+        The Unix socket the app's `am` server listens on, which `am` (and
+        so every other tool here) connects to. Termux's layout names the
+        app id twice: an app whose id is longer than 33 characters must
+        listen somewhere shorter, since a socket path has at most 107
+        bytes.
       '';
     };
 
@@ -122,6 +144,24 @@ in
   ###### implementation
 
   config = let ifD = cond: pkg: if cond then [ pkg ] else [ ]; in {
+    # Every tool here reaches the app through `am`.
+    assertions = [{
+      assertion = !(lib.any (tool: cfg.${tool}.enable) [
+        "am"
+        "termux-open"
+        "termux-open-url"
+        "termux-reload-settings"
+        "termux-setup-storage"
+        "termux-wake-lock"
+        "termux-wake-unlock"
+        "xdg-open"
+        "unsupported"
+      ]) || builtins.stringLength cfg.am.socketPath <= 107;
+      message = "android-integration.am.socketPath is ${toString (builtins.stringLength cfg.am.socketPath)} bytes, "
+        + "over the 107 a Unix socket path can have; set a shorter one where the app listens "
+        + "(${cfg.am.socketPath}).";
+    }];
+
     environment.packages =
       (ifD cfg.am.enable termux-am) ++
       (ifD cfg.termux-setup-storage.enable termux-tools.setup_storage) ++

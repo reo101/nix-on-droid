@@ -181,8 +181,12 @@ Nix-on-Droid can also run in an Android app other than the Termux-based one.
 Such an app does the Termux fork's job: it unpacks the bootstrap zip into its
 data dir, runs `usr/bin/login` in a terminal, and exports
 `TERMUX_APP__PACKAGE_NAME` (its package id) into the session. For the
-`android-integration` tools it also serves Termux's `am` socket, under
-`files/apps/<package id>`.
+`android-integration` tools it also serves Termux's `am` socket, by default
+`files/apps/<package id>/termux-am/am.sock`. That path names the id twice,
+and a socket path has at most 107 bytes: an app whose id is longer than 33
+characters listens somewhere shorter, and says where: in
+`NIX_ON_DROID_AM_SOCKET` in its sessions (read by channel configurations),
+and in `android-integration.am.socketPath` (a flake has to say it).
 
 Every path in a bootstrap is the app's data dir, so the bootstrap has to be
 built for the app's package id:
