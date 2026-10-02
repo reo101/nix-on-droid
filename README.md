@@ -239,6 +239,12 @@ characters listens somewhere shorter, and says where: in
 `NIX_ON_DROID_AM_SOCKET` in its sessions (read by channel configurations),
 and in `android-integration.am.socketPath` (a flake has to say it).
 
+Direct invocations of `usr/bin/login`, such as through `adb`, also export
+the configured `build.androidAppId` and `android-integration.am.socketPath`
+as these session variables when the app has not supplied them. Rebuilding
+a channel configuration therefore keeps the installation's app identity
+and socket even outside a terminal session launched by the app.
+
 Every path in a bootstrap is the app's data dir, so the bootstrap has to be
 built for the app's package id:
 
@@ -395,6 +401,11 @@ Other drivers can use a terminal screen oracle or a system wake-lock query
 without changing the scenarios. When `app_id` differs from the default
 `com.termux.nix`, both bootstrap scenarios also wait for the first-boot
 `Setting build.androidAppId = "<app_id>"...` message.
+
+The sparkles driver waits for typed text to appear at the terminal's current
+input tail before submitting it: native input can still be pending after
+Android's text-injection command returns. Its storage-permission hook uses the
+sparkles app label and waits for the asynchronously created storage links.
 
 ## Tips
 

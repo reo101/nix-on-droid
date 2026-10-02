@@ -1,4 +1,5 @@
 import html
+import time
 
 from .base import AppDriver, Capabilities
 
@@ -22,6 +23,33 @@ class Driver(AppDriver):
           'touch files/.debug/screen-dump"')
         return nod
 
+    def wait_until(self, d, condition, description, timeout=90):
+        from common import screenshot
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if condition():
+                return
+            time.sleep(.1)
+        screenshot(d, 'error')
+        raise TimeoutError(f'NOT FOUND: {description} after {timeout}s')
+
+    def type_line(self, d, text, enter=True):
+        before = self.screen(d) if text else None
+        super().type_line(d, text, enter=False)
+        if text:
+            # Native input is consumed on a render frame, not when adb's
+            # `input text` returns. Enter in that frame can overtake the
+            # pending text. Wait for its echo at the current input tail,
+            # never an earlier occurrence of the command in scrollback.
+            def echoed():
+                screen = self.screen(d)
+                return screen != before and screen.rstrip().endswith(text.rstrip())
+
+            self.wait_until(d, echoed, f'input echo: {text}')
+        if enter:
+            d.ui.press('enter')
+
     def screen(self, d):
         return d(f'run-as {self.app_id} cat files/.debug/screen.txt',
                  check=False).output
@@ -43,6 +71,26 @@ class Driver(AppDriver):
         screenshot(d, 'initial')
         self.type_line(d, url)
         screenshot(d, 'entered-url')
+
+    def answer_storage_prompt(self, d):
+        from common import screenshot
+
+        self.wait_for_text(d, 'Allow sparkles:terminal to access')
+        screenshot(d, 'permission-requested')
+        self.allow_permission(d)
+        # The native am server replies before requesting permission, then
+        # creates the links asynchronously after the dialog is answered.
+        self.wait_until(
+            d,
+            lambda: d(
+                f'run-as {self.app_id} sh -c '
+                '"test -L files/home/storage/shared && '
+                'test -L files/home/storage/pictures"',
+                check=False,
+            ).returncode == 0,
+            'shared storage links',
+        )
+        screenshot(d, 'permission-granted')
 
     def extra_keys(self, d):
         return d(f'run-as {self.app_id} cat files/.debug/keys.txt',
