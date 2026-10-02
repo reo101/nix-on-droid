@@ -36,17 +36,20 @@ class Driver(AppDriver):
 
     def type_line(self, d, text, enter=True):
         before = self.screen(d) if text else None
-        super().type_line(d, text, enter=False)
-        if text:
-            # Native input is consumed on a render frame, not when adb's
-            # `input text` returns. Enter in that frame can overtake the
-            # pending text. Wait for its echo at the current input tail,
-            # never an earlier occurrence of the command in scrollback.
+        # Native input has bounded per-frame queues: a whole adb injection
+        # can lose its tail even before Enter. Keep batches within the native
+        # key event's eight-character text capacity and wait for consumption
+        # before sending more text or Enter.
+        for start in range(0, len(text), 8):
+            end = start + 8
+            super().type_line(d, text[start:end], enter=False)
+            expected = text[:end].rstrip()
+
             def echoed():
                 screen = self.screen(d)
-                return screen != before and screen.rstrip().endswith(text.rstrip())
+                return screen != before and screen.rstrip().endswith(expected)
 
-            self.wait_until(d, echoed, f'input echo: {text}')
+            self.wait_until(d, echoed, f'input echo: {text[:end]}')
         if enter:
             d.ui.press('enter')
 
