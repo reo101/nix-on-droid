@@ -84,8 +84,9 @@ for arch in $ARCHES; do
     if [[ "$ANDROID_APP_ID" == com.termux.nix ]]; then
         BOOTSTRAP_ZIP="$(nix build --no-link --print-out-paths --impure ".#bootstrapZip-${arch}")"
     else
+        # CI checkouts are shallow; this build only needs the working tree.
         BOOTSTRAP_ZIP="$(nix build --no-link --print-out-paths --impure --expr "
-            ((builtins.getFlake \"git+file://$REPO_DIR\").lib.bootstrapPackages {
+            ((builtins.getFlake \"git+file://$REPO_DIR?shallow=1\").lib.bootstrapPackages {
                 system = builtins.currentSystem;
                 arch = \"$arch\";
                 androidAppId = \"$ANDROID_APP_ID\";

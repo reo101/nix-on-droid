@@ -246,6 +246,9 @@ built for the app's package id:
 ANDROID_APP_ID=org.example.nix nix run ".#deploy" -- <public_url> <rsync_target>
 ```
 
+Deployment also supports shallow Git checkouts, including CI checkouts, when
+building a bootstrap for a custom app ID.
+
 An app's own flake can build it with
 `nix-on-droid.lib.bootstrapPackages { system = …; arch = "aarch64"; androidAppId = "org.example.nix"; }`
 (`--impure`, like the other bootstrap builds). Its `initialSettings` (option
