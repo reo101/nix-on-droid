@@ -28,13 +28,40 @@ jobs:
           echo "path=$(realpath /tmp/droidctl)" >> "$GITHUB_OUTPUT"
 
 
+  prepare-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@master
+      - name: Setup cachix (sparkles' Android toolchain)
+        uses: cachix/cachix-action@v14
+        with:
+          name: sparkles
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build the app (the sparkles terminal)
+        run: |
+          nix build .#sparkles-terminal-apk --out-link apk
+          cp apk/sparkles-terminal-nix.apk nix-on-droid.apk
+
+      - name: Store the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: nix-on-droid.apk
+          path: nix-on-droid.apk
+          retention-days: 2
+
+
   prepare-n-o-d:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        app: [termux]  # keep in sync with emulate
+        app: [termux, sparkles-terminal]  # keep in sync with emulate
     env:
       NOD_APP: ${{ matrix.app }}
     steps:
@@ -76,6 +103,7 @@ jobs:
     needs:
       - prepare-droidctl
       - prepare-n-o-d
+      - prepare-apk
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -84,7 +112,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app: [termux]  # keep in sync with prepare-n-o-d
+        app: [termux, sparkles-terminal]  # keep in sync with prepare-n-o-d
         api-level: [29]
         # below 28: bootstrap didn't start, IDK why
         # 34: sometimes work, but doesn't seem stable, even w/o caching images
@@ -107,6 +135,16 @@ jobs:
 
       - name: Unpack zipball and channel tarball to inject (n-o-d)
         run: tar xf n-o-d.tar
+
+      - name: Retrieve the app
+        if: matrix.app == 'sparkles-terminal'
+        uses: actions/download-artifact@v4
+        with:
+          name: nix-on-droid.apk
+
+      - name: Select the local APK
+        if: matrix.app == 'sparkles-terminal'
+        run: echo "NOD_APK=$PWD/nix-on-droid.apk" >> "$GITHUB_ENV"
 
       - name: Install Nix
         uses: nixbuild/nix-quick-install-action@master

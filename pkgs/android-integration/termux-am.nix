@@ -1,13 +1,15 @@
 # Copyright (c) 2019-2024, see AUTHORS. Licensed under MIT License, see LICENSE.
 
-{ stdenv, fetchFromGitHub, cmake, appId ? "com.termux.nix" }:
+{ stdenv
+, fetchFromGitHub
+, cmake
+, appId ? "com.termux.nix"
+  # The socket the app's in-process `am` server listens on
+  # (`android-integration.am.socketPath`); by default Termux's layout, under
+  # the app's data dir.
+, socketPath ? "/data/data/${appId}/files/apps/${appId}/termux-am/am.sock"
+}:
 
-let
-  # The socket the app's in-process `am` server listens on; the path is
-  # derived from the app's package id (`build.androidAppId`).
-  appPath = "/data/data/${appId}/files/apps/${appId}";
-  socketPath = "${appPath}/termux-am/am.sock";
-in
 stdenv.mkDerivation rec {
   name = "termux-am";
   version = "1.5.0";

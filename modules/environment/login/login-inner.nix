@@ -7,23 +7,34 @@ let
 
   nixCmd = "${nix}/bin/nix --extra-experimental-features 'flakes nix-command'";
 
-  # The app id is part of every generated path, so a bootstrap built for a
-  # non-default app must carry it into the user's first configuration —
-  # BEFORE the first switch, or that generation is built for the wrong app.
+  # Settings the user's first configuration starts with, written into it
+  # (below `system.stateVersion`) BEFORE the first switch: the app id first
+  # (it is part of every generated path, so a bootstrap built for a
+  # non-default app must carry it, or that generation is built for the
+  # wrong app), then `build.initialSettings`.
   # Before that switch there is no coreutils: only nix, bash and cacert.
   # `system.stateVersion` is in every template and in the channel default.
-  appIdOption = lib.options.showOption [ "build" "androidAppId" ];
+  firstSettings =
+    lib.optional (config.build.androidAppId != "com.termux.nix")
+      {
+        name = lib.options.showOption [ "build" "androidAppId" ];
+        value = config.build.androidAppId;
+      }
+    ++ lib.mapAttrsToList lib.nameValuePair config.build.initialSettings;
   # Plain bash, like the flake rewrite below: the bootstrap's store holds
   # only the initial packages, so no sed.
-  pinAppId = file: lib.optionalString (config.build.androidAppId != "com.termux.nix") ''
-    echo "Setting ${appIdOption} = \"${config.build.androidAppId}\"..."
+  pinSettings = file: lib.optionalString (firstSettings != [ ]) ''
+    ${lib.concatMapStrings (s: ''
+      echo ${lib.escapeShellArg "Setting ${s.name} = ${lib.generators.toPretty { } s.value}..."}
+    '') firstSettings}
     stateVersionLine='^  system\.stateVersion = '
     while IFS="" read -r p || [[ -n "$p" ]]
     do
-      if [[ $p =~ $stateVersionLine ]]; then
-        printf '  %s = "%s";\n\n' "${appIdOption}" "${config.build.androidAppId}"
-      fi
       printf '%s\n' "$p"
+      if [[ $p =~ $stateVersionLine ]]; then
+        printf '\n%s\n' ${lib.escapeShellArg (lib.concatMapStringsSep "\n"
+          (s: "  ${s.name} = ${lib.generators.toPretty { } s.value};") firstSettings)}
+      fi
     done <<<$(< "${file}") > "${file}"
   '';
   userShell =
@@ -87,13 +98,13 @@ writeText "login-inner" ''
 
         DEFAULT_CONFIG=$(${nix}/bin/nix-instantiate --eval --expr "<nix-on-droid/modules/environment/login/nix-on-droid.nix.default>")
         FIRST_CONFIG=$DEFAULT_CONFIG
-        ${lib.optionalString (config.build.androidAppId != "com.termux.nix") ''
-          # The first generation must be built for this app, so it is built
-          # from a copy that names it. Written with bash alone: coreutils
-          # arrive with that generation.
+        ${lib.optionalString (firstSettings != [ ]) ''
+          # The first generation must be built with the first settings (for
+          # this app, above all), so it is built from a copy that has them.
+          # Written with bash alone: coreutils arrive with that generation.
           FIRST_CONFIG="$HOME/.nix-on-droid-first-config.nix"
           printf '%s\n' "$(< "$DEFAULT_CONFIG")" > "$FIRST_CONFIG"
-          ${pinAppId "$FIRST_CONFIG"}
+          ${pinSettings "$FIRST_CONFIG"}
         ''}
 
         echo "Installing first Nix-on-Droid generation..."
@@ -141,7 +152,7 @@ writeText "login-inner" ''
         done <<<$(< "${config.user.home}/.config/nix-on-droid/flake.nix") \
                   > "${config.user.home}/.config/nix-on-droid/flake.nix"
 
-        ${pinAppId "${config.user.home}/.config/nix-on-droid/nix-on-droid.nix"}
+        ${pinSettings "${config.user.home}/.config/nix-on-droid/nix-on-droid.nix"}
 
         echo "Installing first Nix-on-Droid generation..."
         ${nixCmd} run ${config.build.flake.nix-on-droid} -- switch --flake ${config.user.home}/.config/nix-on-droid

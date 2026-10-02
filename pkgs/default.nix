@@ -15,6 +15,8 @@
   # (this release's branch upstream) may not.
 , fallbackNixOnDroidChannelURL ? null
 , fallbackNixOnDroidFlakeURL ? null
+  # Settings the user's first configuration starts with (`build.initialSettings`).
+, initialSettings ? { }
 }:
 
 let
@@ -62,6 +64,7 @@ let
 
         flake.nix-on-droid = urlOptionValue nixOnDroidFlakeURL "NIX_ON_DROID_FLAKE_URL"
           fallbackNixOnDroidFlakeURL;
+        inherit initialSettings;
       } // pkgs.lib.optionalAttrs (androidAppId != null) {
         inherit androidAppId;
       };

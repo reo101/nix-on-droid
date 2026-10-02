@@ -1,5 +1,26 @@
 # Nix-on-Droid
 
+> [!NOTE]
+> **This is a fork** of
+> [nix-community/nix-on-droid](https://github.com/nix-community/nix-on-droid),
+> to run Nix-on-Droid in a second Android app:
+> [sparkles:terminal](https://github.com/PetarKirov/sparkles/blob/main/docs/apps/terminal/android.md),
+> a terminal with no Java in it, built entirely by Nix, in place of the
+> Termux fork. It has two branches:
+>
+> - [`feat/android-app-id`](https://github.com/PetarKirov/nix-on-droid/tree/feat/android-app-id),
+>   the proposal for upstream, which names no particular app:
+>   `build.androidAppId` (the app Nix-on-Droid runs in, from which every
+>   path the modules and the Android integration tools generate derives; the
+>   default stays `com.termux.nix`), bootstraps built for another app
+>   (`lib.bootstrapPackages`, the deploy script's `ANDROID_APP_ID`), a check,
+>   and [docs](#running-in-another-app).
+> - `feat/sparkles-terminal`, that plus sparkles:terminal as the app
+>   ([`sparkles-terminal-apk`](#sparklesterminal-sparkles-terminal-apk)),
+>   the emulator tests driving it, and this note.
+>
+> Everything else here is upstream's, unchanged.
+
 [<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png"
     alt="Get it on F-Droid"
     height="80">](https://f-droid.org/packages/com.termux.nix)
@@ -39,6 +60,36 @@ and it's not an easy feat to pull off.
 launch the app, press OK,
 expect many hundreds megabytes of downloads to happen.
 
+
+### sparkles:terminal (`sparkles-terminal-apk`)
+
+This flake also builds an app to run Nix-on-Droid in (see
+[Running in another app](#running-in-another-app)):
+[sparkles:terminal](https://github.com/PetarKirov/sparkles/blob/main/docs/apps/terminal/android.md),
+a NativeActivity with no Java in it, built entirely by Nix. sparkles builds
+it, with a bootstrap from `lib.bootstrapPackages`; these outputs re-export it:
+
+```console
+$ nix build .#sparkles-terminal-apk                    # downloads the bootstrap on first start
+$ nix build --impure .#sparkles-terminal-apk-offline   # carries the aarch64 and x86_64 bootstraps
+$ adb install result/*.apk
+```
+
+`sparkles-terminal-apk-unsigned` is the release build, for signing outside
+Nix. The APKs build on x86_64 Linux and Apple Silicon macOS, the hosts the
+Android NDK ships for; only these outputs read the `sparkles` input, so
+nothing else fetches it. Its package id is
+`dev.petar_kirov.sparkles.terminal.nix`, so it does not replace an installed
+Termux-based app; a bootstrap for it is
+`ANDROID_APP_ID=dev.petar_kirov.sparkles.terminal.nix nix run .#deploy -- …`.
+The `android-integration` tools work through the app's built-in `am` server,
+except `termux-open` on a local file, and there is no notification: the app
+has no foreground service.
+
+The shared emulator scenarios select this app with `NOD_APP=sparkles-terminal`;
+pass the debug APK as `NOD_APK=/absolute/path/to/sparkles-terminal-nix.apk`.
+Its driver reads opt-in screen dumps because the GL terminal has no accessibility
+text. CI tests both this app and the default Termux-based app.
 
 ## Nix-on-Droid and the module system
 
@@ -181,8 +232,18 @@ Nix-on-Droid can also run in an Android app other than the Termux-based one.
 Such an app does the Termux fork's job: it unpacks the bootstrap zip into its
 data dir, runs `usr/bin/login` in a terminal, and exports
 `TERMUX_APP__PACKAGE_NAME` (its package id) into the session. For the
-`android-integration` tools it also serves Termux's `am` socket, under
-`files/apps/<package id>`.
+`android-integration` tools it also serves Termux's `am` socket, by default
+`files/apps/<package id>/termux-am/am.sock`. That path names the id twice,
+and a socket path has at most 107 bytes: an app whose id is longer than 33
+characters listens somewhere shorter, and says where: in
+`NIX_ON_DROID_AM_SOCKET` in its sessions (read by channel configurations),
+and in `android-integration.am.socketPath` (a flake has to say it).
+
+Direct invocations of `usr/bin/login`, such as through `adb`, also export
+the configured `build.androidAppId` and `android-integration.am.socketPath`
+as these session variables when the app has not supplied them. Rebuilding
+a channel configuration therefore keeps the installation's app identity
+and socket even outside a terminal session launched by the app.
 
 Every path in a bootstrap is the app's data dir, so the bootstrap has to be
 built for the app's package id:
@@ -191,9 +252,15 @@ built for the app's package id:
 ANDROID_APP_ID=org.example.nix nix run ".#deploy" -- <public_url> <rsync_target>
 ```
 
+Deployment also supports shallow Git checkouts, including CI checkouts, when
+building a bootstrap for a custom app ID.
+
 An app's own flake can build it with
 `nix-on-droid.lib.bootstrapPackages { system = …; arch = "aarch64"; androidAppId = "org.example.nix"; }`
-(`--impure`, like the other bootstrap builds).
+(`--impure`, like the other bootstrap builds). Its `initialSettings` (option
+path to value, e.g. `{ "android-integration.am.enable" = true; }`) are what
+the first configuration starts with: the place for the `android-integration`
+tools the app serves, so they work from first boot.
 
 The configuration such a bootstrap's first start creates carries
 `build.androidAppId = "org.example.nix";`, which every path the modules
@@ -334,6 +401,14 @@ Other drivers can use a terminal screen oracle or a system wake-lock query
 without changing the scenarios. When `app_id` differs from the default
 `com.termux.nix`, both bootstrap scenarios also wait for the first-boot
 `Setting build.androidAppId = "<app_id>"...` message.
+
+The sparkles driver paces short text batches and waits for the complete command
+at the terminal's current input tail before Enter. Native queues can drop a
+whole-command injection; partial echoes can include fish autosuggestions.
+Its storage-permission hook uses the sparkles app label and waits for the
+asynchronously created storage links. The Termux driver waits for wake-lock
+state changes before opening the notification shade, keeping service commands
+in the foreground until their effects are visible.
 
 ## Tips
 

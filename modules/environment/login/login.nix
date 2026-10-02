@@ -1,6 +1,6 @@
 # Copyright (c) 2019-2022, see AUTHORS. Licensed under MIT License, see LICENSE.
 
-{ config, writeScript, writeText }:
+{ config, lib, writeScript, writeText }:
 
 let
   inherit (config.build) installationDir extraProotOptions;
@@ -21,6 +21,16 @@ writeScript "login" ''
   export HOME="${config.user.home}"
   export PROOT_TMP_DIR=${installationDir}/tmp
   export PROOT_L2S_DIR=${installationDir}/.l2s
+
+  # Direct logins (for example through adb) do not inherit the app's session
+  # metadata. Keep configuration evaluation tied to this installation there,
+  # while preserving values supplied by the app.
+  if [ -z "''${TERMUX_APP__PACKAGE_NAME:-}" ]; then
+    export TERMUX_APP__PACKAGE_NAME=${lib.escapeShellArg config.build.androidAppId}
+  fi
+  if [ -z "''${NIX_ON_DROID_AM_SOCKET:-}" ]; then
+    export NIX_ON_DROID_AM_SOCKET=${lib.escapeShellArg config.android-integration.am.socketPath}
+  fi
 
   if ! /system/bin/pgrep proot-static > /dev/null; then
     if test -e ${installationDir}/bin/.proot-static.new; then

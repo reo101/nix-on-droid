@@ -55,6 +55,21 @@ in
           '';
         };
       };
+
+      initialSettings = mkOption {
+        type = with types; attrsOf (oneOf [ bool int str ]);
+        default = { };
+        example = { "android-integration.am.enable" = true; };
+        description = ''
+          Settings the user's first configuration starts with, by option
+          path: first boot writes them into it (below
+          <option>system.stateVersion</option>) before its first switch,
+          after <option>build.androidAppId</option> when the app is not the
+          Termux-based one. For what the app a bootstrap is built for
+          provides, such as the <option>android-integration</option> tools
+          it serves.
+        '';
+      };
     };
 
   };
