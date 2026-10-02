@@ -402,11 +402,13 @@ without changing the scenarios. When `app_id` differs from the default
 `com.termux.nix`, both bootstrap scenarios also wait for the first-boot
 `Setting build.androidAppId = "<app_id>"...` message.
 
-The sparkles driver sends short text batches, waiting for each to appear at the
-terminal's current input tail before sending more text or Enter. Native input
-queues can drop the tail of a whole-command injection. Its storage-permission
-hook uses the sparkles app label and waits for the asynchronously created
-storage links.
+The sparkles driver paces short text batches and waits for the complete command
+at the terminal's current input tail before Enter. Native queues can drop a
+whole-command injection; partial echoes can include fish autosuggestions.
+Its storage-permission hook uses the sparkles app label and waits for the
+asynchronously created storage links. The Termux driver waits for wake-lock
+state changes before opening the notification shade, keeping service commands
+in the foreground until their effects are visible.
 
 ## Tips
 

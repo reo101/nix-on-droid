@@ -36,20 +36,18 @@ class Driver(AppDriver):
 
     def type_line(self, d, text, enter=True):
         before = self.screen(d) if text else None
-        # Native input has bounded per-frame queues: a whole adb injection
-        # can lose its tail even before Enter. Keep batches within the native
-        # key event's eight-character text capacity and wait for consumption
-        # before sending more text or Enter.
+        # Native input has bounded per-frame queues. Pace small batches so
+        # a whole-command injection cannot overflow them. Partial echoes
+        # are not acknowledgements: fish may append a history suggestion.
         for start in range(0, len(text), 8):
-            end = start + 8
-            super().type_line(d, text[start:end], enter=False)
-            expected = text[:end].rstrip()
-
+            super().type_line(d, text[start:start + 8], enter=False)
+            time.sleep(.1)
+        if text:
             def echoed():
                 screen = self.screen(d)
-                return screen != before and screen.rstrip().endswith(expected)
+                return screen != before and screen.rstrip().endswith(text.rstrip())
 
-            self.wait_until(d, echoed, f'input echo: {text[:end]}')
+            self.wait_until(d, echoed, f'input echo: {text}')
         if enter:
             d.ui.press('enter')
 

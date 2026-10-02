@@ -84,6 +84,16 @@ class Driver(AppDriver):
                 screenshot(d, 'wake-lock-permission-asked')
                 self.allow_permission(d)
                 screenshot(d, 'wake-lock-permission-granted')
+        # Keep the activity foreground until the command changes the
+        # service state. Opening the shade first races Android's
+        # background-service restrictions. The status-bar notification
+        # exposes the state without opening the shade.
+        deadline = time.monotonic() + 90
+        while self.wake_lock_held(d) != held:
+            if time.monotonic() >= deadline:
+                screenshot(d, 'error')
+                raise TimeoutError(f'Wake lock did not become held={held}')
+            time.sleep(.1)
         d.ui.open_notification()
         time.sleep(.5)
         screenshot(d, 'notification-opened')
