@@ -104,7 +104,7 @@ in
     build = {
       activationBefore = mkIf cfg.useUserPackages {
         setPriorityHomeManagerPath = ''
-          if nix-env -q | grep '^home-manager-path$'; then
+          if [ ! -e "${config.user.home}/.nix-profile/manifest.json" ] && nix-env -q | grep '^home-manager-path$'; then
             $DRY_RUN_CMD nix-env $VERBOSE_ARG --set-flag priority 120 home-manager-path
           fi
         '';

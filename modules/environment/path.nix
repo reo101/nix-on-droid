@@ -50,10 +50,14 @@ in
 
         nix_previous="$(command -v nix)"
 
-        nix profile list \
-          | grep 'nix-on-droid-path$' \
-          | cut -d ' ' -f 4 \
-          | xargs -t $DRY_RUN_CMD nix profile remove $VERBOSE_ARG
+        store_path=$(nix profile list \
+          | grep -A1 '^Name:.*nix-on-droid-path' \
+          | grep '^Store paths:' \
+          | sed 's/^Store paths:[[:space:]]*//' \
+          | cut -d ' ' -f 1)
+        if [ -n "$store_path" ]; then
+          $DRY_RUN_CMD nix profile remove $VERBOSE_ARG "$store_path"
+        fi
 
         $DRY_RUN_CMD $nix_previous profile install ${cfg.path}
 
